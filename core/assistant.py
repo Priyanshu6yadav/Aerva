@@ -1,6 +1,7 @@
 import subprocess
 import ollama
 from datetime import datetime
+import platform
 
 
 # =========================================================
@@ -122,8 +123,245 @@ def get_time():
     current_time = datetime.now().strftime("%I:%M %p")
 
     return f"The current time is {current_time}."
+# _________________________________________________SYSTEM PART _______________________________#
+# =========================================================
+# SYSTEM INFORMATION
+# =========================================================
 
+def get_system_info():
 
+    result = subprocess.run(
+        [
+            "system_profiler",
+            "SPHardwareDataType"
+        ],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        return "I couldn't retrieve the system information."
+
+    info = result.stdout
+
+    model = "Unknown"
+    chip = "Unknown"
+    memory = "Unknown"
+    cores = "Unknown"
+
+    for line in info.splitlines():
+
+        line = line.strip()
+
+        if line.startswith("Model Name:"):
+            model = line.split(":", 1)[1].strip()
+
+        elif line.startswith("Chip:"):
+            chip = line.split(":", 1)[1].strip()
+
+        elif line.startswith("Memory:"):
+            memory = line.split(":", 1)[1].strip()
+
+        elif line.startswith("Total Number of Cores:"):
+            cores = line.split(":", 1)[1].strip()
+
+    return (
+        f"You are using a {model} with an {chip} chip, "
+        f"{memory} of memory, and {cores} CPU cores."
+    )
+# =========================================================
+# CPU USAGE
+# =========================================================
+
+def get_cpu_usage():
+
+    result = subprocess.run(
+        [
+            "top",
+            "-l",
+            "1",
+            "-n",
+            "0"
+        ],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        return "I couldn't retrieve CPU usage."
+
+    for line in result.stdout.splitlines():
+
+        if "CPU usage:" in line:
+
+            cpu_info = line.strip()
+
+            return f"Current {cpu_info}"
+
+    return "I couldn't determine the current CPU usage."
+# =========================================================
+# MEMORY USAGE
+# =========================================================
+
+def get_memory_usage():
+    result = subprocess.run(
+        ["vm_stat"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        return "I couldn't retrieve memory usage."
+    page_size = 16384
+    stats = {}
+    for line in result.stdout.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        value = value.strip().rstrip(".")
+        try:
+            stats[key.strip()] = int(value)
+        except ValueError:
+            continue
+    free_pages = stats.get(
+        "Pages free",
+        0
+    )
+    inactive_pages = stats.get(
+        "Pages inactive",
+        0
+    )
+    purgeable_pages = stats.get(
+        "Pages purgeable",
+        0
+    )
+    free_bytes = (
+        free_pages +
+        inactive_pages +
+        purgeable_pages
+    ) * page_size
+    free_gb = free_bytes / (
+        1024 ** 3
+    )
+    return (
+        f"Approximately {free_gb:.2f} GB of memory "
+        f"is currently available."
+    )
+# =========================================================
+# DISK USAGE
+# =========================================================
+
+def get_disk_usage():
+
+    result = subprocess.run(
+        ["df", "-h", "/"],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        return "I couldn't retrieve disk usage."
+
+    lines = result.stdout.strip().splitlines()
+
+    if len(lines) < 2:
+        return "I couldn't determine disk usage."
+
+    parts = lines[1].split()
+
+    if len(parts) < 5:
+        return "I couldn't determine disk usage."
+
+    total = parts[1]
+    used = parts[2]
+    available = parts[3]
+    capacity = parts[4]
+
+    return (
+        f"Your Mac has {total} of total storage. "
+        f"{used} is currently used and {available} is available. "
+        f"Disk usage is {capacity}."
+    )
+# =========================================================
+# NETWORK STATUS
+# =========================================================
+
+def get_network_status():
+
+    result = subprocess.run(
+        ["networksetup", "-getinfo", "Wi-Fi"],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        return "I couldn't retrieve network information."
+
+    info = {}
+
+    for line in result.stdout.splitlines():
+
+        if ":" not in line:
+            continue
+
+        key, value = line.split(":", 1)
+
+        info[key.strip()] = value.strip()
+
+    ip_address = info.get(
+        "IP address",
+        "Unknown"
+    )
+
+    router = info.get(
+        "Router",
+        "Unknown"
+    )
+
+    if ip_address == "Unknown":
+
+        return "Wi-Fi is not currently connected."
+
+    return (
+        f"Your Mac is connected to Wi-Fi. "
+        f"Your local IP address is {ip_address} "
+        f"and your router is {router}."
+    )
+def get_network_quality():
+
+    result = subprocess.run(
+        ["networkquality"],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        return "I couldn't check the network quality."
+
+    output = result.stdout.strip()
+
+    # Example:
+    # Downlink: 6.550 Mbps, 60 RPM - Uplink: 50.337 Mbps, 60 RPM
+
+    try:
+        parts = output.split(" - ")
+
+        downlink_part = parts[0]
+        uplink_part = parts[1]
+
+        download_speed = downlink_part.split(":")[1].split(",")[0].strip()
+        download_rpm = downlink_part.split(",")[1].strip()
+
+        upload_speed = uplink_part.split(":")[1].split(",")[0].strip()
+        upload_rpm = uplink_part.split(",")[1].strip()
+
+        return (
+            f"Your download speed is {download_speed}, "
+            f"and your upload speed is {upload_speed}. "
+            f"Network responsiveness is {download_rpm}."
+        )
+
+    except (IndexError, ValueError):
+        return "I checked the network, but I couldn't understand the results."
 # =========================================================
 # ASK LOCAL AI
 # =========================================================
@@ -170,7 +408,12 @@ Available tools:
 open_app(app_name)
 open_url(url)
 get_time()
-
+GET_SYSTEM_INFO
+GET_CPU_USAGE
+GET_MEMORY_USAGE
+GET_DISK_USAGE
+GET_NETWORK_STATUS
+get_network_quality()
 
 1. OPEN_APP
 
@@ -222,18 +465,84 @@ Example:
 User: what time is it?
 GET_TIME
 
+4. GET_SYSTEM_INFO
 
-4. NONE
+Use GET_SYSTEM_INFO when the user asks about
+their Mac hardware, processor, RAM, CPU cores,
+or system hardware.
 
+Examples:
+
+User: What Mac am I using?
+GET_SYSTEM_INFO
+
+User: What processor do I have?
+GET_SYSTEM_INFO
+
+User: How much RAM does my Mac have?
+GET_SYSTEM_INFO
+
+User: Tell me about my Mac hardware.
+GET_SYSTEM_INFO
+
+5. GET_CPU_USAGE
+Use GET_CPU_USAGE when the user asks about
+current CPU usage or CPU load.
+Examples:
+User: How much CPU am I using?
+GET_CPU_USAGE
+User: Check CPU usage.
+GET_CPU_USAGE
+User: Is my CPU under heavy load?
+GET_CPU_USAGE
+
+6. GET_MEMORY_USAGE
+Use GET_MEMORY_USAGE when the user asks about
+RAM, memory usage, available memory, or whether
+the Mac is running low on memory.
+Examples:
+User: How much RAM am I using?
+GET_MEMORY_USAGE
+User: How much memory is available?
+GET_MEMORY_USAGE
+User: Is my Mac running low on memory?
+GET_MEMORY_USAGE
+
+7. GET_DISK_USAGE
+Use GET_DISK_USAGE when the user asks about
+storage, disk space, available storage, or
+whether the Mac is running out of space.
+Examples:
+User: How much storage do I have?
+GET_DISK_USAGE
+User: How much disk space is free?
+GET_DISK_USAGE
+User: Is my Mac storage full?
+GET_DISK_USAGE
+
+8. GET_NETWORK_STATUS
+
+Use GET_NETWORK_STATUS when the user asks about
+Wi-Fi, network connection, local IP address,
+router, or whether the Mac is connected.
+Examples:
+User: Am I connected to Wi-Fi?
+GET_NETWORK_STATUS
+User: What's my IP address?
+GET_NETWORK_STATUS
+User: What's my network status?
+GET_NETWORK_STATUS
+User: How fast is my internet?
+Tool: GET_NETWORK_QUALITY
+
+User: Check my network quality.
+Tool: GET_NETWORK_QUALITY
+
+9. NONE
 If no available tool is required:
-
 NONE
-
-
 Return exactly ONE command.
-
 Valid formats:
-
 OPEN_APP:application_name
 OPEN_URL:url
 GET_TIME
@@ -325,7 +634,37 @@ def parse_tool_decision(decision):
         return {
             "tool": "get_time"
         }
-
+    # GET SYSTEM INFO
+    elif decision.startswith("GET_SYSTEM_INFO"):
+        return {
+            "tool": "get_system_info"
+        }
+    # CPU INFO
+    elif decision.startswith("GET_CPU_USAGE"):
+        return {
+            "tool": "get_cpu_usage"
+        }
+    # MEMORY INFORMATION 
+    elif decision.startswith("GET_MEMORY_USAGE"):
+        return {
+            "tool": "get_memory_usage"
+        }
+    # DISK USAGE
+    elif decision.startswith("GET_DISK_USAGE"):
+        return {
+             "tool": "get_disk_usage"
+        }
+    elif decision.startswith("GET_NETWORK_STATUS"):
+        return {
+            "tool": "get_network_status"
+        }
+    # NETWORK STATUS
+    elif decision.startswith("GET_NETWORK_STATUS"):
+        return {
+            "tool": "get_network_status"
+    }
+    elif decision.startswith("GET_NETWORK_QUALITY"):
+        return {"tool": "get_network_quality"}
     return {
         "tool": None
     }
@@ -352,9 +691,23 @@ def execute_tool(tool_decision):
         )
 
     elif tool == "get_time":
-
         return get_time()
 
+    elif tool == "get_system_info":
+        return get_system_info()
+
+    elif tool == "get_cpu_usage":
+        return get_cpu_usage()
+    elif tool == "get_memory_usage":
+        return get_memory_usage()
+    elif tool == "get_disk_usage":
+        return get_disk_usage()
+    elif tool == "get_network_status":
+        return get_network_status()
+    elif tool == "get_network_status":
+        return get_network_status()
+    elif tool == "get_network_quality":
+        return get_network_quality()
     return "I don't have permission to execute that tool."
 
 
