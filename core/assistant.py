@@ -2,7 +2,13 @@ import subprocess
 import ollama
 from datetime import datetime
 import platform
-
+# Import Aerva's web-search tool.
+# This lets the AI agent call search_web() when web research is needed.
+from core.web_search import search_web
+# Import Aerva's web-research function.
+# It searches the web and uses the local Qwen model
+# to summarize the retrieved information.
+from core.web_search import research_web
 
 # =========================================================
 # BASIC AERVA RESPONSES
@@ -414,6 +420,7 @@ GET_MEMORY_USAGE
 GET_DISK_USAGE
 GET_NETWORK_STATUS
 get_network_quality()
+SEARCH_WEB: search_web(query)
 
 1. OPEN_APP
 
@@ -537,7 +544,35 @@ Tool: GET_NETWORK_QUALITY
 
 User: Check my network quality.
 Tool: GET_NETWORK_QUALITY
+# -----------------------------------------------------------------------
+SEARCH_WEB: Search the internet for current or unknown information.
+Examples:
+User: What are the latest Python 3.14 features?
+Tool: SEARCH_WEB: latest Python 3.14 features
 
+User: Search the web for the latest AI news.
+Tool: SEARCH_WEB: latest AI news
+
+User: What is the current price of Bitcoin?
+Tool: SEARCH_WEB: current Bitcoin price
+#---------------------------------------------------------------------------
+SEARCH_WEB: Search the internet for information that is current,
+unknown, or specifically requested by the user.
+
+Format:
+SEARCH_WEB: <search query>
+
+Examples:
+
+User: What are the latest Python 3.14 features?
+Tool: SEARCH_WEB: latest Python 3.14 features
+
+User: Search the web for the latest AI news.
+Tool: SEARCH_WEB: latest AI news
+
+User: What is the current price of Bitcoin?
+Tool: SEARCH_WEB: current Bitcoin price
+# -------------------------------------------------------------------------
 9. NONE
 If no available tool is required:
 NONE
@@ -665,6 +700,27 @@ def parse_tool_decision(decision):
     }
     elif decision.startswith("GET_NETWORK_QUALITY"):
         return {"tool": "get_network_quality"}
+    # Detect a web-search request from the AI's tool decision.
+    elif decision.startswith("SEARCH_WEB:"):
+        query = decision.split(":", 1)[1].strip()
+        return {
+            "tool": "search_web",
+            "query": query
+        }
+    # ---------------------------------------------------------
+# SEARCH_WEB
+#
+# Extract the search query selected by Qwen.
+# Example:
+# SEARCH_WEB: latest Python 3.14 features
+# ---------------------------------------------------------
+
+    elif decision.startswith("SEARCH_WEB:"):
+        query = decision.split(":", 1)[1].strip()
+        return {
+            "tool": "search_web",
+            "query": query
+        }
     return {
         "tool": None
     }
@@ -676,7 +732,7 @@ def parse_tool_decision(decision):
 
 def execute_tool(tool_decision):
 
-    tool = tool_decision["tool"]
+    tool = tool_decision.get("tool")
 
     if tool == "open_app":
 
@@ -708,6 +764,10 @@ def execute_tool(tool_decision):
         return get_network_status()
     elif tool == "get_network_quality":
         return get_network_quality()
+    # Run the full web-research pipeline:
+    # search -> retrieve results -> Qwen summarizes -> answer
+    elif tool == "search_web":
+        return research_web(tool_decision["query"])
     return "I don't have permission to execute that tool."
 
 
